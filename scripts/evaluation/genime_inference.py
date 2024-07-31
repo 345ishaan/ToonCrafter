@@ -4,6 +4,7 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 from einops import rearrange, repeat
 from collections import OrderedDict
+from io import BytesIO
 import requests
 import numpy as np
 import cv2
@@ -93,9 +94,9 @@ def load_data_prompts(data_dir, video_size=(256,256), video_frames=16, interp=Fa
     for idx in range(n_samples):
         if interp:
             image1 = Image.open(file_list[2*idx]).convert('RGB')
-            image_tensor1 = transform(image1).unsqueeze(1) # [c,1,h,w]
+            image_tensor1 = transform(image1).unsqueeze(1).flip(1) # [c,1,h,w]
             image2 = Image.open(file_list[2*idx+1]).convert('RGB')
-            image_tensor2 = transform(image2).unsqueeze(1) # [c,1,h,w]
+            image_tensor2 = transform(image2).unsqueeze(1).flip(1) # [c,1,h,w]
             frame_tensor1 = repeat(image_tensor1, 'c t h w -> c (repeat t) h w', repeat=video_frames//2)
             frame_tensor2 = repeat(image_tensor2, 'c t h w -> c (repeat t) h w', repeat=video_frames//2)
             frame_tensor = torch.cat([frame_tensor1, frame_tensor2], dim=1)
@@ -122,13 +123,15 @@ def load_data_prompts_genime(img_urls, prompts, cache_map, save_img_dir, video_s
 
     def load_img_from_url(img_url):
         if cache_map.get(img_url, None):
-            return Image.open(cache_map.get(img_url))
+            return Image.open(cache_map.get(img_url)).convert('RGB')
         response = requests.get(img_url)
         if response.status_code == 200:
-            image_data = np.asarray(bytearray(response.content), dtype="uint8")
-            face_img = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
-            assert face_img is not None
-            face_img = Image.fromarray(face_img)
+            image_data = BytesIO(response.content)
+            face_img = Image.open(image_data).convert('RGB')
+            #image_data = np.asarray(bytearray(response.content), dtype="uint8")
+            #face_img = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+            #assert face_img is not None
+            #face_img = Image.fromarray(face_img)
             return face_img
         raise Exception("Unable to load URL")
     
@@ -569,9 +572,14 @@ if __name__ == "__main__":
        ("https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/hanumanji.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2hhbnVtYW5qaS5qcGciLCJpYXQiOjE3MjIzMjU2NjAsImV4cCI6MTc1Mzg2MTY2MH0.jQVRaoHwPhvWOXdozEhAQFdCwskQeNxmkVqFXiXMkZA&t=2024-07-30T07%3A47%3A40.905Z",
         "https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/hanumanji_2.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2hhbnVtYW5qaV8yLmpwZyIsImlhdCI6MTcyMjMyNTY3MywiZXhwIjoxNzUzODYxNjczfQ.DU9_IuZn_lC_83B6EGwcZnl074qo8LyuoVAmMWecmXY&t=2024-07-30T07%3A47%3A53.686Z")
     ]
+    #img_urls = [
+    #    ("https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/74906_1462_frame1.png?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0Lzc0OTA2XzE0NjJfZnJhbWUxLnBuZyIsImlhdCI6MTcyMjQwNjkzNCwiZXhwIjoxNzUzOTQyOTM0fQ.i3Df94vl1wy52vjlmiVcgV_Ft-4Mt2EiGQTJqQaBA3g&t=2024-07-31T06%3A22%3A14.885Z",
+    #    "https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/74906_1462_frame3.png?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0Lzc0OTA2XzE0NjJfZnJhbWUzLnBuZyIsImlhdCI6MTcyMjQwNjk2MiwiZXhwIjoxNzUzOTQyOTYyfQ.PR_1Zmql7DTxwwegLo35c19PfNOOVS6k-ACIxuXxTEw&t=2024-07-31T06%3A22%3A42.292Z")
+    #]
     # List of prompts corresponding to the scene.
     prompt = [
-        "man tearing his chest to reveal a divine image inside"
+        "man tearing his chest to reveal a divine image inside",
+        #"walking man"
     ]
     save_dir = "/home/ToonCrafter/tooncrafter_results"
     interpolater.infer(img_urls, prompt, save_dir)

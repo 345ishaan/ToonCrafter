@@ -10,6 +10,8 @@ import cv2
 import torch
 import uuid
 import json
+import io
+from zipfile import ZipFile
 import torchvision
 import torchvision.transforms as transforms
 from pytorch_lightning import seed_everything
@@ -120,20 +122,23 @@ def load_data_prompts_genime(img_urls, prompts, cache_map, save_img_dir, video_s
 
     def load_img_from_url(img_url):
         if cache_map.get(img_url, None):
-            return Image.open(cache_map.get(img_url)).convert('RGB')
+            return Image.open(cache_map.get(img_url))
         response = requests.get(img_url)
         if response.status_code == 200:
             image_data = np.asarray(bytearray(response.content), dtype="uint8")
             face_img = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
             assert face_img is not None
+            face_img = Image.fromarray(face_img)
             return face_img
         raise Exception("Unable to load URL")
     
     def _update_cache(url, data):
+        if url in cache_map:
+            return
         if not os.path.exists(save_img_dir):
             os.makedirs(save_img_dir)
         fname = os.path.join(save_img_dir, str(uuid.uuid4()) +".png")
-        cv2.imwrite(fname, data)
+        data.save(fname)
         cache_map[url] = fname
         
     
@@ -141,6 +146,8 @@ def load_data_prompts_genime(img_urls, prompts, cache_map, save_img_dir, video_s
     filename_list = []
     prompt_list = [str(p) for p in prompts]
     n_samples = len(prompt_list)
+    import pdb
+
     for idx in range(n_samples):
         if interp:
             img_url_a, img_url_b = img_urls[idx]
@@ -166,7 +173,6 @@ def load_data_prompts_genime(img_urls, prompts, cache_map, save_img_dir, video_s
 
         data_list.append(frame_tensor)
         filename_list.append(filename)
-        
     return filename_list, data_list, prompt_list
 
 
@@ -194,6 +200,14 @@ def save_results(prompt, samples, filename, fakedir, fps=8, loop=False):
         grid = (grid * 255).to(torch.uint8).permute(0, 2, 3, 1)
         path = os.path.join(savedirs[idx], filename)
         torchvision.io.write_video(path, grid, fps=fps, video_codec='h264', options={'crf': '10'}) ## crf indicates the quality
+        zip_filename = path.replace('mp4', 'zip')
+        with ZipFile(zip_filename, 'w') as zipf:
+            for i in range(grid.shape[0]):
+                img = Image.fromarray(grid[i].cpu().numpy())
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
+                buffer.seek(0)
+                zipf.writestr(f'frame_{i:04d}.png', buffer.read())
 
 
 def save_results_seperate(prompt, samples, filename, fakedir, fps=10, loop=False):
@@ -211,12 +225,23 @@ def save_results_seperate(prompt, samples, filename, fakedir, fps=10, loop=False
             video = video[:,:,:-1,...]
         video = torch.clamp(video.float(), -1., 1.)
         n = video.shape[0]
+        assert n == 1
         for i in range(n):
             grid = video[i,...]
             grid = (grid + 1.0) / 2.0
             grid = (grid * 255).to(torch.uint8).permute(1, 2, 3, 0) #thwc
-            path = os.path.join(savedirs[idx].replace('samples', 'samples_separate'), f'{filename.split(".")[0]}_sample{i}.mp4')
+            path = os.path.join(savedirs[idx], 'final_concat.mp4')
             torchvision.io.write_video(path, grid, fps=fps, video_codec='h264', options={'crf': '10'})
+            zip_filename = os.path.join(savedirs[idx], filename.replace('png', 'zip'))
+            zip_filename = path.replace('mp4', 'zip')
+            with ZipFile(zip_filename, 'w') as zipf:
+                for i in range(grid.shape[0]):
+                    img = Image.fromarray(grid[i].cpu().numpy())
+                    buffer = io.BytesIO()
+                    img.save(buffer, format='PNG')
+                    buffer.seek(0)
+                    zipf.writestr(f'frame_{i:04d}.png', buffer.read())
+
 
 def get_latent_z(model, videos):
     b, c, t, h, w = videos.shape
@@ -371,8 +396,8 @@ class InterPolater:
         print(f'Inference with {n_frames} frames')
         noise_shape = [self.args.bs, channels, n_frames, h, w]
 
-        fakedir = os.path.join(save_dir, "samples")
-        fakedir_separate = os.path.join(save_dir, "samples_separate")
+        fakedir = save_dir
+        fakedir_separate = save_dir
 
         # os.makedirs(fakedir, exist_ok=True)
         os.makedirs(fakedir_separate, exist_ok=True)
@@ -427,7 +452,7 @@ class InterPolater:
                     prompt = prompts[nn]
                     filename = filenames[nn]
                     # save_results(prompt, samples, filename, fakedir, fps=8, loop=args.loop)
-                    save_results_seperate(prompt, samples, filename, fakedir, fps=8, loop=self.rgs.loop)
+                    save_results_seperate(prompt, samples, filename, fakedir, fps=8, loop=self.args.loop)
 
         print(f"Saved in {self.args.savedir}. Time used: {(time.time() - start):.2f} seconds")
         
@@ -503,30 +528,30 @@ def run_inference(args, gpu_num, gpu_no):
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--savedir", type=str, default=None, help="results saving path")
-    parser.add_argument("--ckpt_path", type=str, default=None, help="checkpoint path")
-    parser.add_argument("--config", type=str, help="config (yaml) path")
-    parser.add_argument("--prompt_dir", type=str, default=None, help="a data dir containing videos and prompts")
+    parser.add_argument("--ckpt_path", type=str, default="checkpoints/tooncrafter_512_interp_v1/model.ckpt", help="checkpoint path")
+    parser.add_argument("--config", type=str, default="configs/inference_512_v1.0.yaml", help="config (yaml) path")
+    parser.add_argument("--prompt_dir", type=str, default="prompts/512_interp_small/", help="a data dir containing videos and prompts")
     parser.add_argument("--n_samples", type=int, default=1, help="num of samples per prompt",)
     parser.add_argument("--ddim_steps", type=int, default=50, help="steps of ddim if positive, otherwise use DDPM",)
     parser.add_argument("--ddim_eta", type=float, default=1.0, help="eta for ddim sampling (0.0 yields deterministic sampling)",)
     parser.add_argument("--bs", type=int, default=1, help="batch size for inference, should be one")
-    parser.add_argument("--height", type=int, default=512, help="image height, in pixel space")
+    parser.add_argument("--height", type=int, default=320, help="image height, in pixel space")
     parser.add_argument("--width", type=int, default=512, help="image width, in pixel space")
-    parser.add_argument("--frame_stride", type=int, default=3, help="frame stride control for 256 model (larger->larger motion), FPS control for 512 or 1024 model (smaller->larger motion)")
+    parser.add_argument("--frame_stride", type=int, default=10, help="frame stride control for 256 model (larger->larger motion), FPS control for 512 or 1024 model (smaller->larger motion)")
     parser.add_argument("--unconditional_guidance_scale", type=float, default=1.0, help="prompt classifier-free guidance")
     parser.add_argument("--seed", type=int, default=123, help="seed for seed_everything")
     parser.add_argument("--video_length", type=int, default=16, help="inference video length")
     parser.add_argument("--negative_prompt", action='store_true', default=False, help="negative prompt")
-    parser.add_argument("--text_input", action='store_true', default=False, help="input text to I2V model or not")
+    parser.add_argument("--text_input", action='store_true', default=True, help="input text to I2V model or not")
     parser.add_argument("--multiple_cond_cfg", action='store_true', default=False, help="use multi-condition cfg or not")
     parser.add_argument("--cfg_img", type=float, default=None, help="guidance scale for image conditioning")
-    parser.add_argument("--timestep_spacing", type=str, default="uniform", help="The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.")
-    parser.add_argument("--guidance_rescale", type=float, default=0.0, help="guidance rescale in [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891)")
-    parser.add_argument("--perframe_ae", action='store_true', default=False, help="if we use per-frame AE decoding, set it to True to save GPU memory, especially for the model of 576x1024")
+    parser.add_argument("--timestep_spacing", type=str, default="uniform_trailing", help="The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.")
+    parser.add_argument("--guidance_rescale", type=float, default=0.7, help="guidance rescale in [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891)")
+    parser.add_argument("--perframe_ae", action='store_true', default=True, help="if we use per-frame AE decoding, set it to True to save GPU memory, especially for the model of 576x1024")
 
     ## currently not support looping video and generative frame interpolation
     parser.add_argument("--loop", action='store_true', default=False, help="generate looping videos or not")
-    parser.add_argument("--interp", action='store_true', default=False, help="generate generative frame interpolation or not")
+    parser.add_argument("--interp", action='store_true', default=True, help="generate generative frame interpolation or not")
     parser.add_argument("--cache_fname", type=str, default="./cache.json")
     parser.add_argument("--save_img_dir", type=str, default="./save_img_dir")
     return parser
@@ -540,9 +565,13 @@ if __name__ == "__main__":
         ("https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/character_sam.webp?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2NoYXJhY3Rlcl9zYW0ud2VicCIsImlhdCI6MTcyMTQ3MDgzNSwiZXhwIjoxNzUzMDA2ODM1fQ.GXTUB7iYGkrEQIDJahtkdLFyInyetHgfSv5hgHPtvSk&t=2024-07-20T10%3A20%3A35.248Z",
         "https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/character_sandy.webp?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2NoYXJhY3Rlcl9zYW5keS53ZWJwIiwiaWF0IjoxNzIxNDcyMDc5LCJleHAiOjE3NTMwMDgwNzl9.OnOoigkl4CJj8wsdZIDokwsRL4YK84o6o-O6A2plhYM&t=2024-07-20T10%3A41%3A18.610Z")
     ]
+    img_urls = [
+       ("https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/hanumanji.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2hhbnVtYW5qaS5qcGciLCJpYXQiOjE3MjIzMjU2NjAsImV4cCI6MTc1Mzg2MTY2MH0.jQVRaoHwPhvWOXdozEhAQFdCwskQeNxmkVqFXiXMkZA&t=2024-07-30T07%3A47%3A40.905Z",
+        "https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/hanumanji_2.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2hhbnVtYW5qaV8yLmpwZyIsImlhdCI6MTcyMjMyNTY3MywiZXhwIjoxNzUzODYxNjczfQ.DU9_IuZn_lC_83B6EGwcZnl074qo8LyuoVAmMWecmXY&t=2024-07-30T07%3A47%3A53.686Z")
+    ]
     # List of prompts corresponding to the scene.
     prompt = [
-        "An anime scene"
+        "man tearing his chest to reveal a divine image inside"
     ]
     save_dir = "/home/ToonCrafter/tooncrafter_results"
     interpolater.infer(img_urls, prompt, save_dir)

@@ -77,7 +77,7 @@ async def create_interpolation(req: InterpolaterRequest):
         )
     if os.path.exists(save_dir):
         shutil.rmtree(save_dir)
-    return save_fname
+    return (save_fname, zip_fname)
 
 
 if __name__ == "__main__":

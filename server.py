@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from supabase import create_client, Client
 import sys
-sys.path.append("/home/ToonCrafter")
+sys.path.append("/home/server/ToonCrafter")
 from scripts.evaluation.genime_inference import InterPolater
 import shutil
 
@@ -57,9 +57,16 @@ async def create_interpolation(req: InterpolaterRequest):
     """Endpoint for motion interpolation
     """
 
-    save_dir = f"/home/ToonCrafter/server_response/{str(uuid.uuid4())}"
-    interpolater.infer(image_urls=[(req.video_url_a, req.video_url_b)],
-        prompt=[req.prompt],
+    save_dir = f"/home/server/ToonCrafter/server_response/{str(uuid.uuid4())}"
+    print(req)
+    img_urls = [
+            ("https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/hanumanji.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2hhbnVtYW5qaS5qcGciLCJpYXQiOjE3MjIzMjU2NjAsImV4cCI6MTc1Mzg2MTY2MH0.jQVRaoHwPhvWOXdozEhAQFdCwskQeNxmkVqFXiXMkZA&t=2024-07-30T07%3A47%3A40.905Z",
+                           "https://ttvaarlnqssopdguetwq.supabase.co/storage/v1/object/sign/genime-bucket/hanumanji_2.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1cmwiOiJnZW5pbWUtYnVja2V0L2hhbnVtYW5qaV8yLmpwZyIsImlhdCI6MTcyMjMyNTY3MywiZXhwIjoxNzUzODYxNjczfQ.DU9_IuZn_lC_83B6EGwcZnl074qo8LyuoVAmMWecmXY&t=2024-07-30T07%3A47%3A53.686Z")
+    ]
+    img_urls = [(req.video_url_a, req.video_url_b)]
+    prompts = [req.prompt]
+    interpolater.infer(img_urls=img_urls,
+        prompts=prompts,
         save_dir=save_dir)
     save_fname = os.path.join(save_dir, 'final_concat.mp4')
     zip_fname = os.path.join(save_dir, 'final_concat.zip')
@@ -81,4 +88,4 @@ async def create_interpolation(req: InterpolaterRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8081)
+    uvicorn.run(app, host="0.0.0.0", port=8080)

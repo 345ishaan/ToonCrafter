@@ -52,7 +52,7 @@ class InterpolaterRequest(BaseModel):
     frame_stride: int
     width: int
     height: int
-
+    video_len: int
 
 @app.get("/test")
 async def root():
@@ -81,7 +81,8 @@ async def create_interpolation(req: InterpolaterRequest):
         fps=req.fps,
         width=req.width,
         height=req.height,
-        frame_stride=req.frame_stride
+        frame_stride=req.frame_stride,
+        video_len=req.video_len
     )
     save_fname = os.path.join(save_dir, 'final_concat.mp4')
     zip_fname = os.path.join(save_dir, 'final_concat.zip')

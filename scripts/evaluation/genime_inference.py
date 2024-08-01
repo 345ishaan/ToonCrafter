@@ -391,7 +391,7 @@ class InterPolater:
         assert self.args.bs == 1, "Current implementation only support [batch size = 1]!"
     
     def infer(self, img_urls, prompts, save_dir, eta=None, cfg_scale=None, steps=None, 
-              frame_stride=None, fps=None, height=None, width=None):
+              video_len=None, frame_stride=None, fps=None, height=None, width=None):
         ## latent noise shape
         use_h = self.args.height if height is None else height
         use_w = self.args.width if width is None else width
@@ -399,7 +399,7 @@ class InterPolater:
 
         h, w = use_h // 8, use_w // 8
         channels = self.model.model.diffusion_model.out_channels
-        n_frames = self.args.video_length
+        n_frames = self.args.video_length if video_len is None else video_len
         print(f'Inference with {n_frames} frames')
         noise_shape = [self.args.bs, channels, n_frames, h, w]
 

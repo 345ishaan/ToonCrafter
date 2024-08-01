@@ -390,7 +390,7 @@ class InterPolater:
 
         assert self.args.bs == 1, "Current implementation only support [batch size = 1]!"
     
-    def infer(self, img_urls, prompts, save_dir, seed=None, eta=None, cfg_scale=None, steps=None, 
+    def infer(self, img_urls, prompts, save_dir, eta=None, cfg_scale=None, steps=None, 
               frame_stride=None, fps=None, height=None, width=None):
         ## latent noise shape
         use_h = self.args.height if height is None else height

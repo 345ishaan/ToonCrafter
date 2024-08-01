@@ -45,7 +45,6 @@ class InterpolaterRequest(BaseModel):
     video_url_a: str
     video_url_b: str
     prompt: str
-    seed: int 
     eta: float 
     cfg_scale: float 
     steps: int 
@@ -76,7 +75,6 @@ async def create_interpolation(req: InterpolaterRequest):
     interpolater.infer(img_urls=img_urls,
         prompts=prompts,
         save_dir=save_dir,
-        seed=req.seed,
         eta=req.eta, 
         cfg_scale=req.cfg_scale, 
         steps=req.steps,

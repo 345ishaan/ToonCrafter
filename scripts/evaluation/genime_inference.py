@@ -388,12 +388,16 @@ class InterPolater:
         self.model = load_model_checkpoint(self.model, self.args.ckpt_path)
         self.model.eval()
 
-        assert (self.args.height % 16 == 0) and (self.args.width % 16 == 0), "Error: image size [h,w] should be multiples of 16!"
         assert self.args.bs == 1, "Current implementation only support [batch size = 1]!"
     
-    def infer(self, img_urls, prompts, save_dir):
+    def infer(self, img_urls, prompts, save_dir, seed=None, eta=None, cfg_scale=None, steps=None, 
+              frame_stride=None, fps=None, height=None, width=None):
         ## latent noise shape
-        h, w = self.args.height // 8, self.args.width // 8
+        use_h = self.args.height if height is None else height
+        use_w = self.args.width if width is None else width
+        assert (use_h % 16 == 0) and (use_w % 16 == 0), "Error: image size [h,w] should be multiples of 16!"
+
+        h, w = use_h // 8, use_w // 8
         channels = self.model.model.diffusion_model.out_channels
         n_frames = self.args.video_length
         print(f'Inference with {n_frames} frames')
@@ -419,7 +423,7 @@ class InterPolater:
         
         assert os.path.exists(self.args.prompt_dir), "Error: prompt file Not Found!"
         filename_list, data_list, prompt_list = load_data_prompts_genime(img_urls, prompts, cache_map, self.args.save_img_dir,
-                                                                         video_size=(self.args.height, self.args.width), 
+                                                                         video_size=(use_h, use_w), 
                                                                          video_frames=n_frames, interp=self.args.interp)
         json.dump(cache_map, open(self.args.cache_fname, 'w'))
         
@@ -443,9 +447,13 @@ class InterPolater:
                     videos = videos.unsqueeze(0).to("cuda")
 
                 batch_samples = image_guided_synthesis(self.model, prompts, videos, noise_shape, 
-                                                       self.args.n_samples, self.args.ddim_steps, self.args.ddim_eta,
-                                                       self.args.unconditional_guidance_scale, self.args.cfg_img, 
-                                                       self.args.frame_stride, self.args.text_input, 
+                                                       self.args.n_samples, 
+                                                       self.args.ddim_steps if steps is None else steps, 
+                                                       self.args.ddim_eta if eta is None else eta,
+                                                       self.args.unconditional_guidance_scale if cfg_scale is None else cfg_scale, 
+                                                       self.args.cfg_img, 
+                                                       self.args.frame_stride if frame_stride is None else frame_stride, 
+                                                       self.args.text_input, 
                                                        self.args.multiple_cond_cfg, self.args.loop, 
                                                        self.args.interp, self.args.timestep_spacing, self.args.guidance_rescale)
 
@@ -455,7 +463,8 @@ class InterPolater:
                     prompt = prompts[nn]
                     filename = filenames[nn]
                     # save_results(prompt, samples, filename, fakedir, fps=8, loop=args.loop)
-                    save_results_seperate(prompt, samples, filename, fakedir, fps=8, loop=self.args.loop)
+                    save_results_seperate(prompt, samples, filename, fakedir, fps=8 if fps is None else fps, 
+                                          loop=self.args.loop)
 
         print(f"Saved in {self.args.savedir}. Time used: {(time.time() - start):.2f} seconds")
         
@@ -541,7 +550,7 @@ def get_parser():
     parser.add_argument("--height", type=int, default=320, help="image height, in pixel space")
     parser.add_argument("--width", type=int, default=512, help="image width, in pixel space")
     parser.add_argument("--frame_stride", type=int, default=10, help="frame stride control for 256 model (larger->larger motion), FPS control for 512 or 1024 model (smaller->larger motion)")
-    parser.add_argument("--unconditional_guidance_scale", type=float, default=1.0, help="prompt classifier-free guidance")
+    parser.add_argument("--unconditional_guidance_scale", type=float, default=7.5, help="prompt classifier-free guidance")
     parser.add_argument("--seed", type=int, default=123, help="seed for seed_everything")
     parser.add_argument("--video_length", type=int, default=16, help="inference video length")
     parser.add_argument("--negative_prompt", action='store_true', default=False, help="negative prompt")

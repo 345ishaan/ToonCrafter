@@ -213,6 +213,21 @@ def save_results(prompt, samples, filename, fakedir, fps=8, loop=False):
                 zipf.writestr(f'frame_{i:04d}.png', buffer.read())
 
 
+def zip_video_frames(video_path, zip_fpath):
+    video, audio, info = torchvision.io.read_video(video_path)
+    fps = info['video_fps']
+    frame_count = video.shape[0]
+    with ZipFile(zip_fpath, 'w') as zipf:
+        for frame_number, frame in enumerate(video):
+            pil_image = torchvision.transforms.ToPILImage()(frame)
+            buffer = io.BytesIO()
+            pil_img.save(buffer, format='PNG')
+            buffer.seek(0)
+            zipf.writestr(f'vid_fram_{frame_number:04d}.png', buffer.read())
+    return fps, frame_count
+
+
+
 def save_results_seperate(prompt, samples, filename, fakedir, fps=10, loop=False):
     prompt = prompt[0] if isinstance(prompt, list) else prompt
 
@@ -235,8 +250,10 @@ def save_results_seperate(prompt, samples, filename, fakedir, fps=10, loop=False
             grid = (grid * 255).to(torch.uint8).permute(1, 2, 3, 0) #thwc
             path = os.path.join(savedirs[idx], 'final_concat.mp4')
             torchvision.io.write_video(path, grid, fps=fps, video_codec='h264', options={'crf': '10'})
+
             zip_filename = os.path.join(savedirs[idx], filename.replace('png', 'zip'))
             zip_filename = path.replace('mp4', 'zip')
+
             with ZipFile(zip_filename, 'w') as zipf:
                 for i in range(grid.shape[0]):
                     img = Image.fromarray(grid[i].cpu().numpy())

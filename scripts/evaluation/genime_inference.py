@@ -1,5 +1,6 @@
 import argparse, os, sys, glob
 import datetime, time
+from types import SimpleNamespace
 from omegaconf import OmegaConf
 from tqdm import tqdm
 from einops import rearrange, repeat
@@ -390,8 +391,34 @@ def image_guided_synthesis(model, prompts, videos, noise_shape, n_samples=1, ddi
 class InterPolater:
 
     def __init__(self) -> None:
-        parser = get_parser()
-        self.args = parser.parse_args()
+        self.args = SimpleNamespace(
+            savedir=None,
+            ckpt_path="checkpoints/tooncrafter_512_interp_v1/model.ckpt",
+            config="configs/inference_512_v1.0.yaml",
+            prompt_dir="prompts/512_interp_small/",
+            n_samples=1,
+            ddim_steps=50,
+            ddim_eta=1.0,
+            bs=1,
+            height=320,
+            width=512,
+            frame_stride=10,
+            unconditional_guidance_scale=7.5,
+            seed=123,
+            video_length=16,
+            negative_prompt=False,
+            text_input=True,
+            multiple_cond_cfg=False,
+            cfg_img=None,
+            timestep_spacing="uniform_trailing",
+            guidance_rescale=0.7,
+            perframe_ae=True,
+            loop=False,
+            interp=True,
+            cache_fname="./cache.json",
+            save_img_dir="./save_img_dir"
+        )
+        
         seed_everything(self.args.seed)
         self.config = OmegaConf.load(self.args.config)
         self.model_config = self.config.pop("model", OmegaConf.create())

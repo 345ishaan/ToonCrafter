@@ -393,9 +393,9 @@ class InterPolater:
     def __init__(self) -> None:
         self.args = SimpleNamespace(
             savedir=None,
-            ckpt_path="checkpoints/tooncrafter_512_interp_v1/model.ckpt",
-            config="configs/inference_512_v1.0.yaml",
-            prompt_dir="prompts/512_interp_small/",
+            ckpt_path="/root/project/checkpoints/tooncrafter_512_interp_v1/model.ckpt",
+            config="/root/project/configs/inference_512_v1.0.yaml",
+            prompt_dir="/root/project/prompts/512_interp_small/",
             n_samples=1,
             ddim_steps=50,
             ddim_eta=1.0,
@@ -415,8 +415,8 @@ class InterPolater:
             perframe_ae=True,
             loop=False,
             interp=True,
-            cache_fname="./cache.json",
-            save_img_dir="./save_img_dir"
+            cache_fname="/root/project/cache.json",
+            save_img_dir="/root/project/save_img_dir"
         )
         
         seed_everything(self.args.seed)

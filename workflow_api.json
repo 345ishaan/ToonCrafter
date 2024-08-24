@@ -1,0 +1,60 @@
+{
+    "12": {
+      "inputs": {
+        "image": "example.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "Start Image"
+      }
+    },
+    "13": {
+      "inputs": {
+        "filename_prefix": "ComfyUI",
+        "images": [
+          "15",
+          0
+        ]
+      },
+      "class_type": "SaveImage",
+      "_meta": {
+        "title": "Save Image"
+      }
+    },
+    "14": {
+      "inputs": {
+        "image": "example.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "End Image"
+      }
+    },
+    "15": {
+      "inputs": {
+        "ckpt_name": "models/checkpoints/model.ckpt",
+        "vram_opt_strategy": "none",
+        "prompt": "",
+        "seed": 123,
+        "eta": 1,
+        "cfg_scale": 7.5,
+        "steps": 50,
+        "frame_count": 5,
+        "fps": 1,
+        "image": [
+          "12",
+          0
+        ],
+        "image2": [
+          "14",
+          0
+        ]
+      },
+      "class_type": "ToonCrafterNode",
+      "_meta": {
+        "title": "ToonCrafter"
+      }
+    }
+  }

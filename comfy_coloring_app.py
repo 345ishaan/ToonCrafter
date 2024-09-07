@@ -1,6 +1,7 @@
 import json
 import subprocess
 import uuid
+import tempfile
 from pathlib import Path
 from typing import Dict
 import shutil
@@ -27,6 +28,7 @@ image = (
     .apt_install("libxext6")
     .pip_install("comfy-cli==1.0.33")
     .pip_install("requests-toolbelt")
+    .pip_install("Pillow")
     .run_commands(
         "comfy --skip-prompt install --nvidia",
     )
@@ -190,6 +192,41 @@ class ComfyColoringUI:
             logger.error(f"Error queueing prompt: {e}")
             raise
 
+    def background_conversion(self, input_path: str, output_path: str, to_white: bool):
+        from PIL import Image
+        img = Image.open(input_path)
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        if to_white:
+            new_img = Image.new('RGB', img.size, (255, 255, 255))
+            new_img.paste(img, (0, 0), img)
+            new_img.save(output_path)
+        else:
+            datas = img.getdata()
+            new_data = []
+            for item in datas:
+                if item[0] > 200 and item[1] > 200 and item[2] > 200:
+                    new_data.append((255, 255, 255, 0))
+                else:
+                    new_data.append(item)
+            img.putdata(new_data)
+            img.save(output_path, "PNG")
+    
+
+    def transform_filename(original_path: str, suffix: str):
+        # Split the path into directory, filename, and extension
+        directory, filename = os.path.split(original_path)
+        name, ext = os.path.splitext(filename)
+        
+        # Create the new filename with "_bg" added before the extension
+        new_filename = f"{name}{suffix}{ext}"
+        
+        # Join the directory with the new filename
+        return os.path.join(directory, new_filename)
+
+        
+
+
     def get_history(self, prompt_id, server_address):
         response = requests.get(f"http://{server_address}/history/{prompt_id}")
         response.raise_for_status()
@@ -213,6 +250,7 @@ class ComfyColoringUI:
         # Save uploaded files temporarily
         start_img_path = f"/tmp/{start_image.filename}"
         end_img_path = f"/tmp/{end_image.filename}"
+
         video_path = f"/tmp/{video.filename}"
         with open(start_img_path, "wb") as f:
             f.write(await start_image.read())
@@ -220,6 +258,12 @@ class ComfyColoringUI:
             f.write(await end_image.read())
         with open(video_path, "wb") as f:
             f.write(await video.read())
+        # chose background conversion filename as _bg_converted.png
+        start_white_bg_path = self.transform_filename(start_img_path, "_white_bg")
+        end_white_bg_path = self.transform_filename(end_img_path, "_white_bg")
+        self.background_conversion(start_img_path, start_white_bg_path, to_white=True)
+        self.background_conversion(end_img_path, end_white_bg_path, to_white=True)
+        
 
         workflow_data = json.loads(
             (Path(__file__).parent / "workflow_sketch_color_api.json").read_text()
@@ -239,8 +283,8 @@ class ComfyColoringUI:
         })
 
         # Update image and video loading nodes
-        workflow_data["3"]["inputs"]["image"] = start_img_path
-        workflow_data["4"]["inputs"]["image"] = end_img_path
+        workflow_data["3"]["inputs"]["image"] = start_white_bg_path
+        workflow_data["4"]["inputs"]["image"] = end_white_bg_path
         workflow_data["7"]["inputs"]["video"] = video_path
 
         # Save updated workflow
@@ -255,17 +299,37 @@ class ComfyColoringUI:
         # Get all output files
         output_dir = "/root/comfy/ComfyUI/output"
         output_files = []
-        for f in Path(output_dir).iterdir():
-            if f.name.startswith(client_id):
-                with open(f, "rb") as file:
-                    output_files.append({
-                        "filename": f.name,
-                        "data": base64.b64encode(file.read()).decode('utf-8')
-                    })
+        with tempfile.TemporaryDirectory() as temp_dir:
+            from PIL import Image
+            for f in Path(output_dir).iterdir():
+                if f.name.startswith(client_id):
+                    with open(f, "rb") as file:
+                        # Create a temporary file path
+                        temp_file_path = os.path.join(temp_dir, f.name)
+                        trans_bg_file_path = self.transform_filename(temp_file_path, "_trans_bg")
+                        # Read the file content and save it to the temporary file
+                        with open(f, "rb") as source_file, open(temp_file_path, "wb") as temp_file:
+                            temp_file.write(source_file.read())
+                    
+                        # Make background transparent
+                        self.background_conversion(start_img_path, trans_bg_file_path, to_white=False)
+                        
+                        # Open the transparent image
+                        with Image.open(trans_bg_file_path) as transparent_img:
+                            # Save to bytes
+                            img_byte_arr = io.BytesIO()
+                            transparent_img.save(img_byte_arr, format='PNG')
+                            img_byte_arr = img_byte_arr.getvalue()
+                            output_files.append({
+                                "filename": f.name,
+                                "data": base64.b64encode(img_byte_arr).decode('utf-8')
+                            })
 
         # Clean up temporary files
         os.remove(start_img_path)
+        os.remove(start_white_bg_path)
         os.remove(end_img_path)
+        os.remove(end_white_bg_path)
         os.remove(video_path)
         os.remove(new_workflow_file)
 

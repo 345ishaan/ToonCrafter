@@ -1,0 +1,81 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "tooncrafter_512_interp_v1/model.ckpt",
+      "vram_opt_strategy": "none",
+      "prompt": "",
+      "seed": 862597349353573,
+      "eta": 1,
+      "cfg_scale": 7.5,
+      "steps": 50,
+      "frame_count": 10,
+      "fps": 8,
+      "control_scale": 0.6,
+      "image": [
+        "3",
+        0
+      ],
+      "image2": [
+        "4",
+        0
+      ],
+      "frame_guides": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "ToonCrafterWithSketch",
+    "_meta": {
+      "title": "ToonCrafterWithSketch"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image": "kid_with_white_bg.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "4": {
+    "inputs": {
+      "image": "kid_end_with_white_bg.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "7": {
+    "inputs": {
+      "video": "kidfinal3.gif",
+      "force_rate": 0,
+      "force_size": "Disabled",
+      "custom_width": 512,
+      "custom_height": 512,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  }
+}

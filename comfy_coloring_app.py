@@ -213,7 +213,7 @@ class ComfyColoringUI:
             img.save(output_path, "PNG")
     
 
-    def transform_filename(original_path: str, suffix: str):
+    def transform_filename(self, original_path: str, suffix: str):
         # Split the path into directory, filename, and extension
         directory, filename = os.path.split(original_path)
         name, ext = os.path.splitext(filename)
@@ -223,8 +223,6 @@ class ComfyColoringUI:
         
         # Join the directory with the new filename
         return os.path.join(directory, new_filename)
-
-        
 
 
     def get_history(self, prompt_id, server_address):

@@ -24,10 +24,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+
+cuda_version = "12.1.0"  # should be no greater than host CUDA version
+flavor = "devel"  #  includes full CUDA toolkit
+operating_sys = "ubuntu22.04"
+tag = f"{cuda_version}-{flavor}-{operating_sys}"
+
+
 image = (  # build up a Modal Image to run ComfyUI, step by step
-    modal.Image.debian_slim(  # start from basic Linux with Python
-        python_version="3.11"
-    )
+    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.11")
     .apt_install("git", "gcc", "g++")  # install git to clone ComfyUI
     .pip_install("fastapi[standard]==0.115.4")  # install web dependencies
     .pip_install("comfy-cli==1.3.1")  # install comfy-cli
@@ -38,13 +43,10 @@ image = (  # build up a Modal Image to run ComfyUI, step by step
 
 image = (
     image.run_commands(
+        # Add NVIDIA package repositories
         # Clone the ComfyUI-3D-Pack repository
         "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
-        "cd ComfyUI-3D-Pack",
-        # Install Python dependencies from requirements.txt
-        "pip install -r requirements.txt",
-        # Run the install.py script
-        "python install.py"
+        "cd ComfyUI-3D-Pack && pip install -r requirements.txt && python install.py",
     )
 )
 

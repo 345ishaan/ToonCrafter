@@ -31,10 +31,19 @@ operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 
-image = (  # build up a Modal Image to run ComfyUI, step by step
+image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.11")
     .run_commands("export DEBIAN_FRONTEND=noninteractive")
-    .apt_install("git", "gcc", "g++")  # install git to clone ComfyUI
+    .apt_install(
+        "git", 
+        "gcc", 
+        "g++",
+        "libgl1-mesa-glx",  
+        "libglib2.0-0",     
+        "libsm6",           
+        "libxext6",         
+        "libxrender-dev"
+    )
     .pip_install("fastapi[standard]==0.115.4")  # install web dependencies
     .pip_install("comfy-cli==1.3.1")  # install comfy-cli
     .run_commands(  # use comfy-cli to install the ComfyUI repo and its dependencies
@@ -63,6 +72,7 @@ image = (
 
     image
     .pip_install("wheel")
+    .pip_install("onnxruntime-gpu")
     .run_commands(
         # Clone the ComfyUI-3D-Pack repository
         "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
@@ -176,7 +186,7 @@ class ComfyUI:
     @modal.method()
     def infer(self, workflow_path: str = "/root/workflow_hunyuan_3d_api.json"):
         # runs the comfy run --workflow command as a subprocess
-        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 1200"
+        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 2000"
         result = subprocess.run(cmd, shell=True, check=True)
         # Check if the command was successful
         if result.returncode == 0:

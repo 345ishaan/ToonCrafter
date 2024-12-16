@@ -33,17 +33,26 @@ tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 image = (  # build up a Modal Image to run ComfyUI, step by step
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.11")
+    .run_commands("export DEBIAN_FRONTEND=noninteractive")
     .apt_install("git", "gcc", "g++")  # install git to clone ComfyUI
     .pip_install("fastapi[standard]==0.115.4")  # install web dependencies
     .pip_install("comfy-cli==1.3.1")  # install comfy-cli
     .run_commands(  # use comfy-cli to install the ComfyUI repo and its dependencies
         "comfy --skip-prompt install --nvidia"
     )
+    .run_commands("nvcc --version")
+    .run_commands("pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121")
+    .run_commands("apt-get -y install nvidia-driver-525")
+    .env({
+        "CUDA_HOME": "/usr/local/cuda",
+        "PATH": "/usr/local/cuda/bin:$PATH"
+    })
+    .run_commands("nvidia-smi")
+    
 )
 
 image = (
     image.run_commands(
-        # Add NVIDIA package repositories
         # Clone the ComfyUI-3D-Pack repository
         "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
         "cd ComfyUI-3D-Pack && pip install -r requirements.txt && python install.py",

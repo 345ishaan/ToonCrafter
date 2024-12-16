@@ -19,59 +19,94 @@ import requests
 import urllib.request
 import sys
 # subprocess.check_call([sys.executable, "-m", "pip", "install", "requests-toolbelt"])
-from requests_toolbelt import MultipartEncoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 image = (  # build up a Modal Image to run ComfyUI, step by step
     modal.Image.debian_slim(  # start from basic Linux with Python
         python_version="3.11"
     )
-    .apt_install("git")  # install git to clone ComfyUI
-    .apt_install("ffmpeg")
-    .apt_install("libsm6")
-    .apt_install("libxext6")
-    .pip_install("comfy-cli==1.0.33")
-    .pip_install("requests-toolbelt")
-    .pip_install("websocket-client")
-    .pip_install("kiui")
-    .pip_install("torch")
-    .pip_install("torchvision")
-    .pip_install("torch_scatter")
-    .run_commands(
-        "git clone https://github.com/facebookresearch/pytorch3d.git",
-        "pip install pytorch3d/.")
-    # .run_commands(
-    #     "git clone https://github.com/ashawkey/diff-gaussian-rasterization.git"
-    #     "pip install diff-gaussian-rasterization/.")
-    .run_commands(
-        "git clone --recursive https://github.com/NVlabs/nvdiffrast",
-        "pip install nvdiffrast/."
-    )
-    .run_commands(
-        "comfy --skip-prompt install --nvidia",
-    )
-    # .run_commands(
-    #     "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git"
-    # )
-    .run_commands(
-        "comfy node install ComfyUI-3D-Pack",
-        # "python ComfyUI-3D-Pack/_Pre_Builds/_Build_Scripts/auto_build_all.py"
-    )
-    .run_commands(
-        "comfy --skip-prompt model download --url https://huggingface.co/tencent/Hunyuan3D-1/blob/main/mvd_std/uc_text_emb.pt --relative-path custom_nodes/ComfyUI-3D-Pack/Checkpoints/Diffusers/tencent/Hunyuan3D-1"
-    )
-    .run_commands(
-        "comfy --skip-prompt model download --url https://huggingface.co/tencent/Hunyuan3D-1/blob/main/mvd_std/uc_text_emb_2.pt --relative-path custom_nodes/ComfyUI-3D-Pack/Checkpoints/Diffusers/tencent/Hunyuan3D-1"
-    )
-    .run_commands(
-        "ls -R /root/comfy/ComfyUI/models"
+    .apt_install("git", "gcc", "g++")  # install git to clone ComfyUI
+    .pip_install("fastapi[standard]==0.115.4")  # install web dependencies
+    .pip_install("comfy-cli==1.3.1")  # install comfy-cli
+    .run_commands(  # use comfy-cli to install the ComfyUI repo and its dependencies
+        "comfy --skip-prompt install --nvidia"
     )
 )
 
-app = modal.App(name="image-to-3d-comfyui", image=image)
+image = (
+    image.run_commands(
+        # Clone the ComfyUI-3D-Pack repository
+        "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
+        "cd ComfyUI-3D-Pack",
+        # Install Python dependencies from requirements.txt
+        "pip install -r requirements.txt",
+        # Run the install.py script
+        "python install.py"
+    )
+)
 
+# image = (
+#     image.run_commands(  # download a custom node
+#         "comfy node install ComfyUI-3D-Pack",
+#     )
+# )
+
+image = (
+    # install huggingface_hub with hf_transfer support to speed up downloads
+    image.pip_install("huggingface_hub[hf_transfer]==0.26.2")
+    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
+    .run_commands(  # needs to be empty for Volume mount to work
+        "rm -rf /root/comfy/ComfyUI/models"
+    )
+)
+
+app = modal.App(name="comfy-3d-app", image=image)
+
+vol = modal.Volume.from_name("comfyui-3d-models", create_if_missing=True)
+
+
+@app.function(
+    volumes={"/root/3d_models": vol},
+)
+def hf_download(repo_id: str, filename: str, model_type: str):
+    from huggingface_hub import hf_hub_download
+
+    hf_hub_download(
+        repo_id=repo_id,
+        filename=filename,
+        local_dir=f"/root/3d_models/{model_type}",
+    )
+
+@app.local_entrypoint()
+def download_models():
+    models_to_download = [
+        # format is (huggingface repo_id, the model filename, comfyui models subdirectory we want to save the model in)
+        (
+            "tencent/Hunyuan3D-1",
+            "mvd_lite/vae/diffusion_pytorch_model.safetensors",
+            "Hunyuan3D",
+        ),
+        (
+            "tencent/Hunyuan3D-1",
+            "mvd_lite/vision_encoder/model.safetensors",
+            "Hunyuan3D",
+        ),
+        (
+            "tencent/Hunyuan3D-1",
+            "mvd_lite/unet/diffusion_pytorch_model.safetensors",
+            "Hunyuan3D",
+        ),
+        (
+            "tencent/Hunyuan3D-1",
+            "mvd_lite/text_encoder/model.safetensors",
+            "Hunyuan3D",
+        ),
+        
+    ]
+    list(hf_download.starmap(models_to_download))
 
 
 @app.function(
@@ -80,8 +115,87 @@ app = modal.App(name="image-to-3d-comfyui", image=image)
     container_idle_timeout=30,
     timeout=1800,
     gpu="A100",
+    volumes={"/root/comfy/ComfyUI/models": vol},
 )
 @modal.web_server(8005, startup_timeout=60)
 def ui():
     subprocess.Popen("comfy launch -- --listen 0.0.0.0 --port 8005", shell=True)
 
+
+@app.cls(
+    allow_concurrent_inputs=10,
+    container_idle_timeout=300,
+    gpu="A100",
+    mounts=[
+        modal.Mount.from_local_file(
+            Path(__file__).parent / "workflow_hunyuan_3d_api.json",
+            "/root/workflow_hunyuan_3d_api.json",
+        ),
+    ],
+    volumes={"/root/comfy/ComfyUI/models": vol},
+)
+class ComfyUI:
+    @modal.enter()
+    def launch_comfy_background(self):
+        cmd = "comfy launch --background"
+        subprocess.run(cmd, shell=True, check=True)
+
+    @modal.method()
+    def infer(self, workflow_path: str = "/root/workflow_hunyuan_3d_api.json"):
+        # runs the comfy run --workflow command as a subprocess
+        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 1200"
+        result = subprocess.run(cmd, shell=True, check=True)
+        # Check if the command was successful
+        if result.returncode == 0:
+            # Command was successful
+            return {"status": "success", "output": result.stdout}
+        else:
+            # Command failed
+            return {"status": "error", "output": result.stderr}
+
+        # # completed workflows write output images to this directory
+        # output_dir = "/root/comfy/ComfyUI/output"
+        # # looks up the name of the output image file based on the workflow
+        # workflow = json.loads(Path(workflow_path).read_text())
+        # file_prefix = [
+        #     node.get("inputs")
+        #     for node in workflow.values()
+        #     if node.get("class_type") == "SaveImage"
+        # ][0]["filename_prefix"]
+
+        # # returns the image as bytes
+        # for f in Path(output_dir).iterdir():
+        #     if f.name.startswith(file_prefix):
+        #         return f.read_bytes()
+
+    @modal.web_endpoint(method="POST")
+    async def api(self, image: UploadFile = File(...)):
+        from fastapi import Response
+        
+
+        local_img_path = f"/tmp/{image.filename}"
+        with open(local_img_path, "wb") as f:
+            f.write(await image.read())
+        
+
+        workflow_data = json.loads(
+            (Path(__file__).parent / "workflow_hunyuan_3d_api.json").read_text()
+        )
+        for node in workflow_data["nodes"]:
+            if node["id"] == 9:
+                node["widgets_values"][0] = local_img_path
+
+        client_id = uuid.uuid4().hex
+        new_workflow_file = f"/tmp/{client_id}.json"
+        json.dump(workflow_data, Path(new_workflow_file).open("w"))
+
+        # Run inference
+        result = self.infer.local(new_workflow_file)
+
+        return Response(
+            content=f"""
+            Executed inference for {new_workflow_file}; status: {result.get("status")}; output: {result.get("output")}""",
+            media_type="text/plain"
+        )
+
+       

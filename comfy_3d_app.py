@@ -42,28 +42,43 @@ image = (  # build up a Modal Image to run ComfyUI, step by step
     )
     .run_commands("nvcc --version")
     .run_commands("pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121")
-    .run_commands("apt-get -y install nvidia-driver-525")
-    .env({
-        "CUDA_HOME": "/usr/local/cuda",
-        "PATH": "/usr/local/cuda/bin:$PATH"
-    })
-    .run_commands("nvidia-smi")
+    .run_commands(
+        # Set debconf to non-interactive mode
+        "export DEBIAN_FRONTEND=noninteractive",
+        # Preconfigure keyboard settings to avoid prompts
+        "echo 'keyboard-configuration keyboard-configuration/layout select English (US)' | debconf-set-selections",
+        "echo 'keyboard-configuration keyboard-configuration/layoutcode string us' | debconf-set-selections",
+        "echo 'keyboard-configuration keyboard-configuration/modelcode string pc105' | debconf-set-selections"
+    )
+    # .run_commands("apt-get -y install nvidia-driver-525")
+    # .env({
+    #     "CUDA_HOME": "/usr/local/cuda",
+    #     "PATH": "/usr/local/cuda/bin:$PATH"
+    # })
+    # .run_commands("nvidia-smi")
     
 )
 
 image = (
-    image.run_commands(
+
+    image
+    .pip_install("wheel")
+    .run_commands(
         # Clone the ComfyUI-3D-Pack repository
         "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
-        "cd ComfyUI-3D-Pack && pip install -r requirements.txt && python install.py",
+        "cd ComfyUI-3D-Pack && python install.py",
+        gpu="A100"
     )
 )
 
-# image = (
-#     image.run_commands(  # download a custom node
-#         "comfy node install ComfyUI-3D-Pack",
-#     )
-# )
+image = (
+    image.run_commands(  # download a custom node
+        "apt-get install -y clang",
+        "apt-get install -y libomp-dev",
+        "comfy node install ComfyUI-3D-Pack",
+        gpu="A100"
+    )
+)
 
 image = (
     # install huggingface_hub with hf_transfer support to speed up downloads
@@ -78,6 +93,13 @@ app = modal.App(name="comfy-3d-app", image=image)
 
 vol = modal.Volume.from_name("comfyui-3d-models", create_if_missing=True)
 
+@app.function(gpu="any")
+def check_nvidia_smi():
+    import subprocess
+    output = subprocess.check_output(["nvidia-smi"], text=True)
+    assert "Driver Version: 550.90.07" in output
+    assert "CUDA Version: 12.4" in output
+    return output
 
 @app.function(
     volumes={"/root/3d_models": vol},

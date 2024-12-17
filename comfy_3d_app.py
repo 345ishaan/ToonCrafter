@@ -25,32 +25,23 @@ logger = logging.getLogger(__name__)
 
 
 
-cuda_version = "12.1.0"  # should be no greater than host CUDA version
+cuda_version = "12.4.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
 operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 
-image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.11")
+image = (  # build up a Modal Image to run ComfyUI, step by step
+    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
     .run_commands("export DEBIAN_FRONTEND=noninteractive")
-    .apt_install(
-        "git", 
-        "gcc", 
-        "g++",
-        "libgl1-mesa-glx",  
-        "libglib2.0-0",     
-        "libsm6",           
-        "libxext6",         
-        "libxrender-dev"
-    )
+    .apt_install("git", "gcc", "g++")  # install git to clone ComfyUI
     .pip_install("fastapi[standard]==0.115.4")  # install web dependencies
     .pip_install("comfy-cli==1.3.1")  # install comfy-cli
     .run_commands(  # use comfy-cli to install the ComfyUI repo and its dependencies
         "comfy --skip-prompt install --nvidia"
     )
     .run_commands("nvcc --version")
-    .run_commands("pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121")
+    .run_commands("pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124")
     .run_commands(
         # Set debconf to non-interactive mode
         "export DEBIAN_FRONTEND=noninteractive",
@@ -58,6 +49,26 @@ image = (
         "echo 'keyboard-configuration keyboard-configuration/layout select English (US)' | debconf-set-selections",
         "echo 'keyboard-configuration keyboard-configuration/layoutcode string us' | debconf-set-selections",
         "echo 'keyboard-configuration keyboard-configuration/modelcode string pc105' | debconf-set-selections"
+    )
+    .run_commands(        
+        "apt-get install -y clang",
+        "apt-get install -y libomp-dev",
+        "apt-get install --no-install-recommends -y libegl1",
+        "apt-get install --no-install-recommends -y libegl1-mesa-dev",
+        "apt-get install --no-install-recommends -y libgl1",
+        "apt-get install --no-install-recommends -y libglib2.0-0",
+        "apt-get install --no-install-recommends -y libgl1-mesa-dev",
+        "apt-get install --no-install-recommends -y libgl1-mesa-glx",
+        "apt-get install --no-install-recommends -y libgles2",
+        "apt-get install --no-install-recommends -y libgles2-mesa-dev",
+        "apt-get install --no-install-recommends -y libglib2.0-0",
+        "apt-get install --no-install-recommends -y libglvnd-dev",
+        "apt-get install --no-install-recommends -y libglvnd0",
+        "apt-get install --no-install-recommends -y libglx0",
+        "apt-get install --no-install-recommends -y libsm6",
+        "apt-get install --no-install-recommends -y libxext6",
+        "apt-get install --no-install-recommends -y libxrender1",
+        "pip install onnxruntime-gpu==1.20.0"
     )
     # .run_commands("apt-get -y install nvidia-driver-525")
     # .env({
@@ -72,7 +83,6 @@ image = (
 
     image
     .pip_install("wheel")
-    .pip_install("onnxruntime-gpu")
     .run_commands(
         # Clone the ComfyUI-3D-Pack repository
         "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
@@ -83,8 +93,6 @@ image = (
 
 image = (
     image.run_commands(  # download a custom node
-        "apt-get install -y clang",
-        "apt-get install -y libomp-dev",
         "comfy node install ComfyUI-3D-Pack",
         gpu="A100"
     )
@@ -186,7 +194,7 @@ class ComfyUI:
     @modal.method()
     def infer(self, workflow_path: str = "/root/workflow_hunyuan_3d_api.json"):
         # runs the comfy run --workflow command as a subprocess
-        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 2000"
+        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 1200"
         result = subprocess.run(cmd, shell=True, check=True)
         # Check if the command was successful
         if result.returncode == 0:

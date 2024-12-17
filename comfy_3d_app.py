@@ -50,7 +50,7 @@ image = (
         "comfy --skip-prompt install --nvidia"
     )
     .run_commands("nvcc --version")
-    .run_commands("pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121")
+    # .run_commands("pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121")
     .run_commands(
         # Set debconf to non-interactive mode
         "export DEBIAN_FRONTEND=noninteractive",
@@ -86,6 +86,8 @@ image = (
         "apt-get install -y clang",
         "apt-get install -y libomp-dev",
         "comfy node install ComfyUI-3D-Pack",
+        "pip install torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu121",
+        "pip install xformers --upgrade --extra-index-url https://pypi.nvidia.com",
         gpu="A100"
     )
 )

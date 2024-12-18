@@ -53,6 +53,13 @@ image = (  # build up a Modal Image to run ComfyUI, step by step
     .run_commands(        
         "apt-get install -y clang",
         "apt-get install -y libomp-dev",
+        "apt-get install -y libglfw3-dev",
+        "apt-get install -y libgles2-mesa",
+        "apt-get install -y mesa-utils",
+        "apt-get install -y xvfb",
+        "apt-get install -y libgl1-mesa-dri",
+        "apt-get install -y x11-xserver-utils",
+        # "apt-get install -y pkg-config",
         "apt-get install --no-install-recommends -y libegl1",
         "apt-get install --no-install-recommends -y libegl1-mesa-dev",
         "apt-get install --no-install-recommends -y libgl1",
@@ -70,6 +77,16 @@ image = (  # build up a Modal Image to run ComfyUI, step by step
         "apt-get install --no-install-recommends -y libxrender1",
         "pip install onnxruntime-gpu==1.20.0"
     )
+    .env({
+        "DISPLAY": ":99",
+        "NVIDIA_DRIVER_CAPABILITIES": "all",
+        "MESA_GL_VERSION_OVERRIDE": "4.5",
+        "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
+        "PYTHONPATH": "/usr/lib/python3/dist-packages"
+    })
+    .run_commands(
+        "Xvfb :99 -screen 0 1024x768x24 &"
+    )
     # .run_commands("apt-get -y install nvidia-driver-525")
     # .env({
     #     "CUDA_HOME": "/usr/local/cuda",
@@ -83,26 +100,31 @@ image = (
 
     image
     .pip_install("wheel")
+    .pip_install("slangtorch==1.2.6")
     .run_commands(
-        # Clone the ComfyUI-3D-Pack repository
-        "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git",
-        "cd ComfyUI-3D-Pack && python install.py",
+        "cd /root/comfy/ComfyUI/custom_nodes && "
+        "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git && "
+        # "git clone https://github.com/1halfplusminus/ComfyUI-3D-Pack.git &&"
+        "cd ComfyUI-3D-Pack && "
+        "python install.py && "
+        "pip install -r requirements.txt && "
+        "pip install objprint varname",
         gpu="A100"
     )
 )
 
-image = (
-    image.run_commands(  # download a custom node
-        "comfy node install ComfyUI-3D-Pack",
-        gpu="A100"
-    )
-)
+# image = (
+#     image.run_commands(  # download a custom node
+#         "comfy node install ComfyUI-3D-Pack",
+#         gpu="A100"
+#     )
+# )
 
 image = (
     # install huggingface_hub with hf_transfer support to speed up downloads
     image.pip_install("huggingface_hub[hf_transfer]==0.26.2")
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
-    .run_commands(  # needs to be empty for Volume mount to work
+    .run_commands(
         "rm -rf /root/comfy/ComfyUI/models"
     )
 )
@@ -168,7 +190,7 @@ def download_models():
     gpu="A100",
     volumes={"/root/comfy/ComfyUI/models": vol},
 )
-@modal.web_server(8005, startup_timeout=60)
+@modal.web_server(8005, startup_timeout=300)
 def ui():
     subprocess.Popen("comfy launch -- --listen 0.0.0.0 --port 8005", shell=True)
 

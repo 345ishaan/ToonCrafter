@@ -100,18 +100,27 @@ image = (
 
     image
     .pip_install("wheel")
-    .pip_install("slangtorch==1.2.6")
     .run_commands(
         "cd /root/comfy/ComfyUI/custom_nodes && "
-        "git clone https://github.com/MrForExample/ComfyUI-3D-Pack.git && "
+        "rm -rf ComfyUI-3D-Pack && "
+        "git clone https://github.com/bansaltushar92/ComfyUI-3D-Pack.git && "
         # "git clone https://github.com/1halfplusminus/ComfyUI-3D-Pack.git &&"
         "cd ComfyUI-3D-Pack && "
+        "git checkout 37059a42994ee1e5636d6962823098969c2b47f4"
+    )
+    .run_commands(
+        "cd /root/comfy/ComfyUI/custom_nodes/ComfyUI-3D-Pack && "
         "python install.py && "
         "pip install -r requirements.txt && "
         "pip install objprint varname",
         gpu="A100"
     )
 )
+
+# image = image.run_commands(
+#     "pip install slangtorch==1.3.0",
+#     "python -c 'import slangtorch; print(\"slangtorch version:\", slangtorch.__version__)'"
+# )
 
 # image = (
 #     image.run_commands(  # download a custom node

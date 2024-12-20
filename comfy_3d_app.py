@@ -18,6 +18,8 @@ import time
 import requests
 import urllib.request
 import sys
+import glob
+import shutil
 # subprocess.check_call([sys.executable, "-m", "pip", "install", "requests-toolbelt"])
 
 logging.basicConfig(level=logging.INFO)
@@ -237,7 +239,6 @@ class ComfyUI:
     async def api(self, image: UploadFile = File(...)):
         from fastapi import Response
         
-
         local_img_path = f"/tmp/{image.filename}"
         with open(local_img_path, "wb") as f:
             f.write(await image.read())
@@ -247,18 +248,41 @@ class ComfyUI:
         )
         
         workflow_data["9"]["inputs"]["image"] = local_img_path
-
-        client_id = uuid.uuid4().hex
+        output_folder_uuid = uuid.uuid4().hex
+        output_folder_path = f"/root/comfy/ComfyUI/output/{output_folder_uuid}"
+        workflow_data["15"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_1.obj"
+        workflow_data["17"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_t_1.obj"        client_id = uuid.uuid4().hex
         new_workflow_file = f"/tmp/{client_id}.json"
         json.dump(workflow_data, Path(new_workflow_file).open("w"))
 
         # Run inference
         result = self.infer.local(new_workflow_file)
+        response_data = {
+            "status": result.get("status"),
+            "output": result.get("output"),
+            "files": {}
+        }
+        # Check if the inference was successful
+        if result.get("status") == "success":
+            # Gather all .obj and .mtl files from the output folder
+            obj_files = glob.glob(f"{output_folder_path}/*.obj")
+            mtl_files = glob.glob(f"{output_folder_path}/*.mtl")
 
-        return Response(
-            content=f"""
-            Ran inference for {new_workflow_file}; status: {result.get("status")}; output: {result.get("output")}""",
-            media_type="text/plain"
-        )
+            # Read the contents of the .obj and .mtl files
+            for obj_file in obj_files:
+                with open(obj_file, 'r') as f:
+                    response_data["files"][os.path.basename(obj_file)] = f.read()
 
+            for mtl_file in mtl_files:
+                with open(mtl_file, 'r') as f:
+                    response_data["files"][os.path.basename(mtl_file)] = f.read()
+
+        # Clean up: delete the output folder
+        if os.path.exists(output_folder_path):
+            shutil.rmtree(output_folder_path)
+            print(f"Deleted output folder: {output_folder_path}")
+        else:
+            print(f"Output folder does not exist: {output_folder_path}")
+
+        return Response(content=json.dumps(response_data), media_type="application/json")
        

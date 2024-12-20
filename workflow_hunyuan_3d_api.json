@@ -57,18 +57,6 @@
       "title": "InvertMask"
     }
   },
-  "11": {
-    "inputs": {
-      "images": [
-        "8",
-        0
-      ]
-    },
-    "class_type": "PreviewImage",
-    "_meta": {
-      "title": "Preview Image"
-    }
-  },
   "12": {
     "inputs": {
       "force_download": false,
@@ -99,19 +87,6 @@
     "class_type": "[Comfy3D] Hunyuan3D V1 Reconstruction Model",
     "_meta": {
       "title": "Hunyuan3D V1 Reconstruction Model"
-    }
-  },
-  "14": {
-    "inputs": {
-      "mesh_file_path": [
-        "15",
-        0
-      ],
-      "preview3d": null
-    },
-    "class_type": "[Comfy3D] Preview 3DMesh",
-    "_meta": {
-      "title": "Preview 3DMesh"
     }
   },
   "15": {
@@ -152,19 +127,6 @@
     "class_type": "[Comfy3D] Save 3D Mesh",
     "_meta": {
       "title": "Save 3D Mesh"
-    }
-  },
-  "18": {
-    "inputs": {
-      "mesh_file_path": [
-        "17",
-        0
-      ],
-      "preview3d": null
-    },
-    "class_type": "[Comfy3D] Preview 3DMesh",
-    "_meta": {
-      "title": "Preview 3DMesh"
     }
   },
   "19": {

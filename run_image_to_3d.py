@@ -22,11 +22,17 @@ with open("wayfair.jpg", "rb") as image_file:
     }
 
     # Send a POST request to the API endpoint
-    response = requests.post(url, files=files)
+    response = requests.post(url, files=files, timeout=3600)
 
-print(f"Status Code: {response.status_code}")
-print(f"Response Headers: {response.headers}")
-print(f"Response Content: {response.text}")
+# Check if the request was successful
+if response.status_code == 200:
+    # Print the response content
+    print("Response Content:")
+    print(response.text)  # This will print the content returned by the API
+else:
+    print(f"Failed to retrieve response. Status Code: {response.status_code}")
+    print(f"Response Content: {response.text}")
+
 
 # if response.status_code == 200:
 #     result = response.json()

@@ -225,30 +225,13 @@ class ComfyUI:
     @modal.method()
     def infer(self, workflow_path: str = "/root/workflow_hunyuan_3d_api.json"):
         # runs the comfy run --workflow command as a subprocess
-        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 1200"
-        result = subprocess.run(cmd, shell=True, check=True)
-        # Check if the command was successful
-        if result.returncode == 0:
-            # Command was successful
+        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 4800"
+        try:
+            result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
             return {"status": "success", "output": result.stdout}
-        else:
-            # Command failed
-            return {"status": "error", "output": result.stderr}
+        except subprocess.CalledProcessError as e:
+            return {"status": "error", "output": str(e)}
 
-        # # completed workflows write output images to this directory
-        # output_dir = "/root/comfy/ComfyUI/output"
-        # # looks up the name of the output image file based on the workflow
-        # workflow = json.loads(Path(workflow_path).read_text())
-        # file_prefix = [
-        #     node.get("inputs")
-        #     for node in workflow.values()
-        #     if node.get("class_type") == "SaveImage"
-        # ][0]["filename_prefix"]
-
-        # # returns the image as bytes
-        # for f in Path(output_dir).iterdir():
-        #     if f.name.startswith(file_prefix):
-        #         return f.read_bytes()
 
     @modal.web_endpoint(method="POST")
     async def api(self, image: UploadFile = File(...)):
@@ -259,7 +242,6 @@ class ComfyUI:
         with open(local_img_path, "wb") as f:
             f.write(await image.read())
         
-
         workflow_data = json.loads(
             (Path(__file__).parent / "workflow_hunyuan_3d_api.json").read_text()
         )
@@ -276,7 +258,7 @@ class ComfyUI:
 
         return Response(
             content=f"""
-            Executed inference for {new_workflow_file}; status: {result.get("status")}; output: {result.get("output")}""",
+            Ran inference for {new_workflow_file}; status: {result.get("status")}; output: {result.get("output")}""",
             media_type="text/plain"
         )
 

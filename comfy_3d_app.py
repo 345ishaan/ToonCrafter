@@ -245,9 +245,8 @@ class ComfyUI:
         workflow_data = json.loads(
             (Path(__file__).parent / "workflow_hunyuan_3d_api.json").read_text()
         )
-        for node in workflow_data["nodes"]:
-            if node["id"] == 9:
-                node["widgets_values"][0] = local_img_path
+        
+        workflow_data["9"]["inputs"]["image"] = local_img_path
 
         client_id = uuid.uuid4().hex
         new_workflow_file = f"/tmp/{client_id}.json"

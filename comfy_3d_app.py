@@ -215,19 +215,38 @@ def ui():
             Path(__file__).parent / "workflow_hunyuan_3d_api.json",
             "/root/workflow_hunyuan_3d_api.json",
         ),
+        modal.Mount.from_local_file(
+            Path(__file__).parent / "squirrel_girl_1.png",
+            "/root/squirrel_girl_1.png",
+        ),
     ],
     volumes={"/root/comfy/ComfyUI/models": vol},
 )
 class ComfyUI:
     @modal.enter()
     def launch_comfy_background(self):
-        cmd = "comfy launch --background"
+        cmd = "comfy launch --background --listen 127.0.0.1 --port 8007"
         subprocess.run(cmd, shell=True, check=True)
+        time.sleep(600)
+    
+    def wait_for_comfyui_server(self, timeout=600):
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get("http://127.0.0.1:8007/")
+                if response.status_code == 200:
+                    return True
+            except requests.exceptions.RequestException:
+                pass
+            time.sleep(1)
+        return False
 
     @modal.method()
     def infer(self, workflow_path: str = "/root/workflow_hunyuan_3d_api.json"):
         # runs the comfy run --workflow command as a subprocess
-        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 4800"
+        if not self.wait_for_comfyui_server():
+            raise Exception("ComfyUI server is not ready")
+        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 4800 --host 127.0.0.1 --port 8007"
         try:
             result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
             return {"status": "success", "output": result.stdout}
@@ -250,8 +269,12 @@ class ComfyUI:
         workflow_data["9"]["inputs"]["image"] = local_img_path
         output_folder_uuid = uuid.uuid4().hex
         output_folder_path = f"/root/comfy/ComfyUI/output/{output_folder_uuid}"
+        # create output folder if it doesn't exist
+        os.makedirs(output_folder_path, exist_ok=True)
         workflow_data["15"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_1.obj"
         workflow_data["17"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_t_1.obj"
+
+        print(workflow_data)
         
         client_id = uuid.uuid4().hex
         new_workflow_file = f"/tmp/{client_id}.json"

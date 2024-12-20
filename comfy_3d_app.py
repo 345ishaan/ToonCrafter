@@ -251,7 +251,9 @@ class ComfyUI:
         output_folder_uuid = uuid.uuid4().hex
         output_folder_path = f"/root/comfy/ComfyUI/output/{output_folder_uuid}"
         workflow_data["15"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_1.obj"
-        workflow_data["17"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_t_1.obj"        client_id = uuid.uuid4().hex
+        workflow_data["17"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_t_1.obj"
+        
+        client_id = uuid.uuid4().hex
         new_workflow_file = f"/tmp/{client_id}.json"
         json.dump(workflow_data, Path(new_workflow_file).open("w"))
 

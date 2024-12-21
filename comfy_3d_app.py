@@ -142,6 +142,10 @@ image = (
     )
 )
 
+image = (
+    image.pip_install("requests-toolbelt")
+)
+
 app = modal.App(name="comfy-3d-app", image=image)
 
 vol = modal.Volume.from_name("comfyui-3d-models", create_if_missing=True)

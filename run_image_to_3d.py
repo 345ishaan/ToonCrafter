@@ -15,7 +15,7 @@ url = "https://genime--comfy-3d-app-comfyui-api.modal.run"
 
 
 
-with open("wayfair.jpg", "rb") as image_file:
+with open("squirrel_girl_1.png", "rb") as image_file:
     # Prepare the files dictionary for the request
     files = {
         "image": image_file
@@ -28,10 +28,10 @@ with open("wayfair.jpg", "rb") as image_file:
 if response.status_code == 200:
     # Print the response content
     print("Response Content:")
-    print(response.text)  # This will print the content returned by the API
+    print(response.json())  # This will print the content returned by the API
 else:
     print(f"Failed to retrieve response. Status Code: {response.status_code}")
-    print(f"Response Content: {response.text}")
+    print(f"Response Content: {response.json()}")
 
 
 # if response.status_code == 200:

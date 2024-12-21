@@ -20,6 +20,8 @@ import urllib.request
 import sys
 import glob
 import shutil
+from requests_toolbelt import MultipartEncoder
+
 # subprocess.check_call([sys.executable, "-m", "pip", "install", "requests-toolbelt"])
 
 logging.basicConfig(level=logging.INFO)
@@ -225,33 +227,119 @@ def ui():
 class ComfyUI:
     @modal.enter()
     def launch_comfy_background(self):
-        cmd = "comfy launch --background --listen 127.0.0.1 --port 8007"
-        subprocess.run(cmd, shell=True, check=True)
-        time.sleep(600)
+        print("Inside launch_comfy_background")
+        # first check if the server is already running
+        if not self.wait_for_comfyui_server(timeout=10):
+            cmd = "comfy launch --background"
+            subprocess.run(cmd, shell=True, check=True)
+        time.sleep(10)
     
     def wait_for_comfyui_server(self, timeout=600):
+        print("Inside wait_for_comfyui_server")
+        
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                response = requests.get("http://127.0.0.1:8007/")
+                response = requests.get("https://genime--comfy-3d-app-ui.modal.run")
                 if response.status_code == 200:
                     return True
-            except requests.exceptions.RequestException:
+            except requests.exceptions.RequestException as e:
+                print("RequestException: ", e)
                 pass
             time.sleep(1)
         return False
 
     @modal.method()
-    def infer(self, workflow_path: str = "/root/workflow_hunyuan_3d_api.json"):
+    def infer(self, workflow_path: str, image_path: str, client_id: str):
+        print("Inside infer")
         # runs the comfy run --workflow command as a subprocess
-        if not self.wait_for_comfyui_server():
+        if not self.wait_for_comfyui_server(timeout=10):
             raise Exception("ComfyUI server is not ready")
-        cmd = f"comfy run --workflow {workflow_path} --wait --timeout 4800 --host 127.0.0.1 --port 8007"
+        logger.info("ComfyUI server is ready")
+
+        server_address = "genime--comfy-3d-app-ui.modal.run"
         try:
-            result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
-            return {"status": "success", "output": result.stdout}
-        except subprocess.CalledProcessError as e:
-            return {"status": "error", "output": str(e)}
+            # Upload images
+            logger.info("Uploading images...")
+            self.upload_image(image_path, "image.png", server_address)
+
+            # Load and prepare the workflow
+            logger.info("Preparing workflow...")
+            with open(workflow_path, 'r') as f:
+                workflow = json.load(f)
+
+            # Update image nodes in the workflow
+            workflow["9"]["inputs"]["image"] = "image.png"
+
+            # Queue prompt
+            logger.info("Queueing prompt...")
+            prompt_id = self.queue_prompt(workflow, client_id, server_address)
+            logger.info(f"Prompt queued with ID: {prompt_id}")
+
+            # Wait for execution to complete
+            max_retries = 180  # 15 minutes total
+            retry_delay = 5
+            for attempt in range(max_retries):
+                try:
+                    history = self.get_history(prompt_id, server_address)
+                    logger.info(f"Attempt {attempt + 1}: History status - {json.dumps(history.get(prompt_id, {}), indent=2)}")
+                    
+                    if prompt_id in history:
+                        status = history[prompt_id]
+                        if status.get('status', {}).get('completed', False):
+                            logger.info("Execution completed")
+                            break
+                        elif 'error' in status:
+                            raise Exception(f"Execution failed: {status['error']}")
+                    else:
+                        logger.warning(f"Prompt ID {prompt_id} not found in history")
+                except RequestException as e:
+                    logger.warning(f"Error getting history: {e}. Retrying...")
+                
+                time.sleep(retry_delay)
+            else:
+                raise TimeoutError(f"Execution did not complete within the expected time ({max_retries * retry_delay} seconds)")
+
+            # Wait a bit more to ensure file system sync
+            time.sleep(10)
+
+        except Exception as e:
+            logger.error(f"An error occurred during inference: {e}")
+            raise
+
+    def upload_image(self, input_path, name, server_address):
+        with open(input_path, 'rb') as file:
+            multipart_data = MultipartEncoder(
+                fields={
+                    'image': (name, file, 'image/png'),
+                    'type': 'input',
+                    'overwrite': 'true'
+                }
+            )
+            headers = {'Content-Type': multipart_data.content_type}
+            response = requests.post(f"http://{server_address}/upload/image", data=multipart_data, headers=headers)
+            response.raise_for_status()
+        return response.json()
+
+    def queue_prompt(self, prompt, client_id, server_address):
+        logger.info(f"Queueing prompt for client ID: {client_id}")
+        p = {"prompt": prompt, "client_id": client_id}
+        headers = {'Content-Type': 'application/json'}
+        try:
+            response = requests.post(f"http://{server_address}/prompt", json=p, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Prompt queued successfully. Response: {json.dumps(result, indent=2)}")
+            return result['prompt_id']
+        except Exception as e:
+            logger.error(f"Error queueing prompt: {e}")
+            raise
+
+    def get_history(self, prompt_id, server_address):
+        response = requests.get(f"http://{server_address}/history/{prompt_id}")
+        response.raise_for_status()
+        return response.json()
+
 
 
     @modal.web_endpoint(method="POST")
@@ -268,27 +356,24 @@ class ComfyUI:
         
         workflow_data["9"]["inputs"]["image"] = local_img_path
         output_folder_uuid = uuid.uuid4().hex
-        output_folder_path = f"/root/comfy/ComfyUI/output/{output_folder_uuid}"
+        output_folder_path = f"/root/comfy/ComfyUI/models/{output_folder_uuid}"
         # create output folder if it doesn't exist
         os.makedirs(output_folder_path, exist_ok=True)
         workflow_data["15"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_1.obj"
         workflow_data["17"]["inputs"]["save_path"] = f"{output_folder_path}/mesh_t_1.obj"
-
-        print(workflow_data)
         
         client_id = uuid.uuid4().hex
         new_workflow_file = f"/tmp/{client_id}.json"
         json.dump(workflow_data, Path(new_workflow_file).open("w"))
 
         # Run inference
-        result = self.infer.local(new_workflow_file)
+        self.infer.local(new_workflow_file, local_img_path, client_id)
         response_data = {
-            "status": result.get("status"),
-            "output": result.get("output"),
             "files": {}
         }
-        # Check if the inference was successful
-        if result.get("status") == "success":
+            
+        # Clean up: delete the output folder
+        if os.path.exists(output_folder_path):
             # Gather all .obj and .mtl files from the output folder
             obj_files = glob.glob(f"{output_folder_path}/*.obj")
             mtl_files = glob.glob(f"{output_folder_path}/*.mtl")
@@ -302,8 +387,6 @@ class ComfyUI:
                 with open(mtl_file, 'r') as f:
                     response_data["files"][os.path.basename(mtl_file)] = f.read()
 
-        # Clean up: delete the output folder
-        if os.path.exists(output_folder_path):
             shutil.rmtree(output_folder_path)
             print(f"Deleted output folder: {output_folder_path}")
         else:

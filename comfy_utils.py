@@ -54,3 +54,35 @@ def clear_comfy_cache(server_address, unload_models=False, free_memory=False):
 
     with urllib.request.urlopen("http://{}/free".format(server_address), data=data) as response:
         return response.read()
+    
+
+def track_progress(prompt, ws, prompt_id):
+    node_ids = list(prompt.keys())
+    finished_nodes = []
+
+    while True:
+        out = ws.recv()
+        if isinstance(out, str):
+            message = json.loads(out)
+            if message['type'] == 'progress':
+                data = message['data']
+                current_step = data['value']
+                print('In K-Sampler -> Step: ', current_step, ' of: ', data['max'])
+            if message['type'] == 'execution_cached':
+                data = message['data']
+                for itm in data['nodes']:
+                    if itm not in finished_nodes:
+                        finished_nodes.append(itm)
+                        print('Progess: ', len(finished_nodes), '/', len(node_ids), ' Tasks done')
+            if message['type'] == 'executing':
+                data = message['data']
+                if data['node'] not in finished_nodes:
+                    finished_nodes.append(data['node'])
+                    print('Progess: ', len(finished_nodes), '/', len(node_ids), ' Tasks done')
+
+
+                if data['node'] is None and data['prompt_id'] == prompt_id:
+                    break #Execution is done
+        else:
+            continue #previews are binary data
+    return

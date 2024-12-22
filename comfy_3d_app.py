@@ -21,6 +21,7 @@ import sys
 import glob
 import shutil
 from requests_toolbelt import MultipartEncoder
+from comfy_utils import upload_image, queue_prompt, track_progress, interupt_prompt, get_history, get_node_info_by_class, clear_comfy_cache
 
 # subprocess.check_call([sys.executable, "-m", "pip", "install", "requests-toolbelt"])
 
@@ -143,7 +144,11 @@ image = (
 )
 
 image = (
-    image.pip_install("requests-toolbelt")
+    image.pip_install("requests-toolbelt==1.0.0")
+)
+
+image = (
+    image.pip_install("websocket_client==1.7.0")
 )
 
 app = modal.App(name="comfy-3d-app", image=image)
@@ -237,6 +242,13 @@ class ComfyUI:
             cmd = "comfy launch --background"
             subprocess.run(cmd, shell=True, check=True)
         time.sleep(10)
+
+    def open_websocket_connection(self,server_address):
+        client_id=str(uuid.uuid4())
+        ws = websocket.WebSocket()
+        ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
+        return ws, client_id
+
     
     def wait_for_comfyui_server(self, timeout=600):
         print("Inside wait_for_comfyui_server")
@@ -254,62 +266,88 @@ class ComfyUI:
         return False
 
     @modal.method()
-    def infer(self, workflow_path: str, image_path: str, client_id: str):
+    def infer(self, workflow_path: str, image_path: str, client_id: str, output_dir_path: str):
         print("Inside infer")
         # runs the comfy run --workflow command as a subprocess
-        if not self.wait_for_comfyui_server(timeout=10):
-            raise Exception("ComfyUI server is not ready")
-        logger.info("ComfyUI server is ready")
-
+        # if not self.wait_for_comfyui_server(timeout=10):
+        #     raise Exception("ComfyUI server is not ready")
+        # logger.info("ComfyUI server is ready")
         server_address = "genime--comfy-3d-app-ui.modal.run"
         try:
-            # Upload images
-            logger.info("Uploading images...")
-            self.upload_image(image_path, "image.png", server_address)
-
-            # Load and prepare the workflow
-            logger.info("Preparing workflow...")
+            print("Opening websocket connection")
+            ws, server_address, client_id = self.open_websocket_connection(server_address)
+            print("Uploading image")
+            upload_image(image_path, "image.png", server_address, client_id)
+            print("Uploaded image")
             with open(workflow_path, 'r') as f:
-                workflow = json.load(f)
+                prompt = json.load(f)
 
             # Update image nodes in the workflow
-            workflow["9"]["inputs"]["image"] = "image.png"
+            prompt["9"]["inputs"]["image"] = "image.png"
+            print("Queuing prompt")
+            prompt_id = queue_prompt(prompt, client_id, server_address)['prompt_id']
+            print("Queued prompt")
+            print("Tracking progress")
+            track_progress(prompt, ws, prompt_id)
 
-            # Queue prompt
-            logger.info("Queueing prompt...")
-            prompt_id = self.queue_prompt(workflow, client_id, server_address)
-            logger.info(f"Prompt queued with ID: {prompt_id}")
+        finally:
+            ws.close()
 
-            # Wait for execution to complete
-            max_retries = 180  # 15 minutes total
-            retry_delay = 5
-            for attempt in range(max_retries):
-                try:
-                    history = self.get_history(prompt_id, server_address)
-                    logger.info(f"Attempt {attempt + 1}: History status - {json.dumps(history.get(prompt_id, {}), indent=2)}")
+        # try:
+        #     # Upload images
+        #     logger.info("Uploading images...")
+        #     self.upload_image(image_path, "image.png", server_address)
+
+        #     # Load and prepare the workflow
+        #     logger.info("Preparing workflow...")
+        #     with open(workflow_path, 'r') as f:
+        #         workflow = json.load(f)
+
+        #     # Update image nodes in the workflow
+        #     workflow["9"]["inputs"]["image"] = "image.png"
+
+        #     # Queue prompt
+        #     logger.info("Queueing prompt...")
+        #     prompt_id = self.queue_prompt(workflow, client_id, server_address)
+        #     logger.info(f"Prompt queued with ID: {prompt_id}")
+
+        #     # Wait for execution to complete
+        #     max_retries = 180  # 15 minutes total
+        #     retry_delay = 5
+        #     for attempt in range(max_retries):
+        #         try:
+        #             history = self.get_history(prompt_id, server_address)
+        #             print(f"Attempt {attempt + 1}: History status - {json.dumps(history.get(prompt_id, {}), indent=2)}")
+        #             # check if there are any obj and mtl files in the output_dir_path
+        #             if os.path.exists(output_dir_path):
+        #                 obj_files = glob.glob(f"{output_dir_path}/*.obj")
+        #                 mtl_files = glob.glob(f"{output_dir_path}/*.mtl")
+        #                 print(f"Found {len(obj_files)} obj files and {len(mtl_files)} mtl files in {output_dir_path}")
+
+        #             logger.info(f"Attempt {attempt + 1}: History status - {json.dumps(history.get(prompt_id, {}), indent=2)}")
                     
-                    if prompt_id in history:
-                        status = history[prompt_id]
-                        if status.get('status', {}).get('completed', False):
-                            logger.info("Execution completed")
-                            break
-                        elif 'error' in status:
-                            raise Exception(f"Execution failed: {status['error']}")
-                    else:
-                        logger.warning(f"Prompt ID {prompt_id} not found in history")
-                except RequestException as e:
-                    logger.warning(f"Error getting history: {e}. Retrying...")
+        #             if prompt_id in history:
+        #                 status = history[prompt_id]
+        #                 if status.get('status', {}).get('completed', False):
+        #                     logger.info("Execution completed")
+        #                     break
+        #                 elif 'error' in status:
+        #                     raise Exception(f"Execution failed: {status['error']}")
+        #             else:
+        #                 logger.warning(f"Prompt ID {prompt_id} not found in history")
+        #         except RequestException as e:
+        #             logger.warning(f"Error getting history: {e}. Retrying...")
                 
-                time.sleep(retry_delay)
-            else:
-                raise TimeoutError(f"Execution did not complete within the expected time ({max_retries * retry_delay} seconds)")
+        #         time.sleep(retry_delay)
+        #     else:
+        #         raise TimeoutError(f"Execution did not complete within the expected time ({max_retries * retry_delay} seconds)")
 
-            # Wait a bit more to ensure file system sync
-            time.sleep(10)
+        #     # Wait a bit more to ensure file system sync
+        #     time.sleep(10)
 
-        except Exception as e:
-            logger.error(f"An error occurred during inference: {e}")
-            raise
+        # except Exception as e:
+        #     logger.error(f"An error occurred during inference: {e}")
+        #     raise
 
     def upload_image(self, input_path, name, server_address):
         with open(input_path, 'rb') as file:
@@ -323,6 +361,7 @@ class ComfyUI:
             headers = {'Content-Type': multipart_data.content_type}
             response = requests.post(f"http://{server_address}/upload/image", data=multipart_data, headers=headers)
             response.raise_for_status()
+            print(f"successfully uploaded image for {input_path}/{name}/{server_address}/{response.status_code}")
         return response.json()
 
     def queue_prompt(self, prompt, client_id, server_address):
@@ -333,6 +372,7 @@ class ComfyUI:
             response = requests.post(f"http://{server_address}/prompt", json=p, headers=headers)
             response.raise_for_status()
             result = response.json()
+            print(f"successfully queued prompt for {client_id}/{server_address}/{response.status_code}/{result}")
             logger.info(f"Prompt queued successfully. Response: {json.dumps(result, indent=2)}")
             return result['prompt_id']
         except Exception as e:
@@ -371,7 +411,7 @@ class ComfyUI:
         json.dump(workflow_data, Path(new_workflow_file).open("w"))
 
         # Run inference
-        self.infer.local(new_workflow_file, local_img_path, client_id)
+        self.infer.local(new_workflow_file, local_img_path, client_id, output_folder_path)
         response_data = {
             "files": {}
         }

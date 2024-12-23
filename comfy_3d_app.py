@@ -242,7 +242,7 @@ class ComfyUI:
             cmd = "comfy launch --background"
             subprocess.run(cmd, shell=True, check=True)
         time.sleep(10)
-
+    
     def open_websocket_connection(self,server_address):
         client_id=str(uuid.uuid4())
         ws = websocket.WebSocket()
@@ -252,11 +252,12 @@ class ComfyUI:
     
     def wait_for_comfyui_server(self, timeout=600):
         print("Inside wait_for_comfyui_server")
-        
+        server_address = "127.0.0.1:8188"
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                response = requests.get("https://genime--comfy-3d-app-ui.modal.run")
+                response = requests.get(f"http://{server_address}/")
+                print(response.status_code, f"http://{server_address}/")
                 if response.status_code == 200:
                     return True
             except requests.exceptions.RequestException as e:
@@ -272,26 +273,26 @@ class ComfyUI:
         # if not self.wait_for_comfyui_server(timeout=10):
         #     raise Exception("ComfyUI server is not ready")
         # logger.info("ComfyUI server is ready")
-        server_address = "genime--comfy-3d-app-ui.modal.run"
-        try:
-            print("Opening websocket connection")
-            ws, server_address, client_id = self.open_websocket_connection(server_address)
-            print("Uploading image")
-            upload_image(image_path, "image.png", server_address, client_id)
-            print("Uploaded image")
-            with open(workflow_path, 'r') as f:
-                prompt = json.load(f)
+        server_address = "127.0.0.1:8188"
+        # ws, server_address, client_id = self.open_websocket_connection(server_address)
+        print("Uploading image")
+        upload_image(image_path, "image.png", server_address, client_id)
+        print("Uploaded image")
+        with open(workflow_path, 'r') as f:
+            prompt = json.load(f)
 
-            # Update image nodes in the workflow
-            prompt["9"]["inputs"]["image"] = "image.png"
-            print("Queuing prompt")
-            prompt_id = queue_prompt(prompt, client_id, server_address)['prompt_id']
-            print("Queued prompt")
-            print("Tracking progress")
-            track_progress(prompt, ws, prompt_id)
+        # Update image nodes in the workflow
+        prompt["9"]["inputs"]["image"] = "image.png"
+        print("Queuing prompt")
+        prompt_id = queue_prompt(prompt, client_id, server_address)['prompt_id']
 
-        finally:
-            ws.close()
+        while True:
+            print("Getting history")
+            history = get_history(prompt_id, server_address)
+            if history:
+                break
+            time.sleep(1)
+        
 
         # try:
         #     # Upload images

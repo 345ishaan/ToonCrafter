@@ -1,12 +1,4 @@
 import requests
-import json
-import uuid
-import websocket
-import urllib.request
-import urllib.parse
-from requests_toolbelt import MultipartEncoder
-
-from comfy_utils import upload_image
 
 url = "https://genime--comfy-3d-app-comfyui-api.modal.run"
 

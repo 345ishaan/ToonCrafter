@@ -122,18 +122,6 @@ image = (
     )
 )
 
-# image = image.run_commands(
-#     "pip install slangtorch==1.3.0",
-#     "python -c 'import slangtorch; print(\"slangtorch version:\", slangtorch.__version__)'"
-# )
-
-# image = (
-#     image.run_commands(  # download a custom node
-#         "comfy node install ComfyUI-3D-Pack",
-#         gpu="A100"
-#     )
-# )
-
 image = (
     # install huggingface_hub with hf_transfer support to speed up downloads
     image.pip_install("huggingface_hub[hf_transfer]==0.26.2")
@@ -202,19 +190,6 @@ def download_models():
         
     ]
     list(hf_download.starmap(models_to_download))
-
-
-@app.function(
-    allow_concurrent_inputs=10,
-    concurrency_limit=1,
-    container_idle_timeout=30,
-    timeout=1800,
-    gpu="A100",
-    volumes={"/root/comfy/ComfyUI/models": vol},
-)
-@modal.web_server(8005, startup_timeout=300)
-def ui():
-    subprocess.Popen("comfy launch -- --listen 0.0.0.0 --port 8005", shell=True)
 
 
 @app.cls(

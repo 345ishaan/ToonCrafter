@@ -143,12 +143,12 @@ image = (
     )
 )
 
-image = (
-    image.pip_install("requests-toolbelt==1.0.0")
-)
 
 image = (
-    image.pip_install("websocket_client==1.7.0")
+    image.pip_install("aiohttp==3.11.11")
+    .pip_install("yarl==1.18.3")
+    .pip_install("requests-toolbelt==1.0.0")
+    .pip_install("websocket_client==1.8.0")
 )
 
 app = modal.App(name="comfy-3d-app", image=image)

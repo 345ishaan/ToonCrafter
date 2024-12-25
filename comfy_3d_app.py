@@ -194,7 +194,7 @@ def download_models():
 
 @app.cls(
     allow_concurrent_inputs=10,
-    container_idle_timeout=300,
+    container_idle_timeout=1200,
     gpu="A100",
     mounts=[
         modal.Mount.from_local_file(

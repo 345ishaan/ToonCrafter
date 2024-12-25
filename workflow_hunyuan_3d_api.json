@@ -1,0 +1,163 @@
+{
+  "7": {
+    "inputs": {
+      "diffusers_pipeline_name": "Hunyuan3DMVDLitePipeline",
+      "repo_id": "tencent/Hunyuan3D-1",
+      "custom_pipeline": "",
+      "force_download": false,
+      "checkpoint_sub_dir": "mvd_lite"
+    },
+    "class_type": "[Comfy3D] Load Diffusers Pipeline",
+    "_meta": {
+      "title": "Load Diffusers Pipeline"
+    }
+  },
+  "8": {
+    "inputs": {
+      "seed": 0,
+      "mv_guidance_scale": 2,
+      "num_inference_steps": 50,
+      "mvdiffusion_pipe": [
+        "7",
+        0
+      ],
+      "reference_image": [
+        "9",
+        0
+      ],
+      "reference_mask": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "[Comfy3D] Hunyuan3D V1 MVDiffusion Model",
+    "_meta": {
+      "title": "Hunyuan3D V1 MVDiffusion Model"
+    }
+  },
+  "9": {
+    "inputs": {
+      "image": "squirrel_girl_1.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "10": {
+    "inputs": {
+      "mask": [
+        "9",
+        1
+      ]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "InvertMask"
+    }
+  },
+  "12": {
+    "inputs": {
+      "force_download": false,
+      "use_lite": true
+    },
+    "class_type": "[Comfy3D] Load Hunyuan3D V1 Reconstruction Model",
+    "_meta": {
+      "title": "Load Hunyuan3D V1 Reconstruction Model"
+    }
+  },
+  "13": {
+    "inputs": {
+      "seed": 0,
+      "target_face_count": 90000,
+      "hunyuan3d_v1_reconstruction_model": [
+        "12",
+        0
+      ],
+      "multiview_image_grid": [
+        "8",
+        0
+      ],
+      "condition_image": [
+        "8",
+        1
+      ]
+    },
+    "class_type": "[Comfy3D] Hunyuan3D V1 Reconstruction Model",
+    "_meta": {
+      "title": "Hunyuan3D V1 Reconstruction Model"
+    }
+  },
+  "15": {
+    "inputs": {
+      "save_path": "Test_Hunyuan3D_V1\\mesh_1.obj",
+      "mesh": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "[Comfy3D] Save 3D Mesh",
+    "_meta": {
+      "title": "Save 3D Mesh"
+    }
+  },
+  "16": {
+    "inputs": {
+      "texture_resolution": 1024,
+      "batch_size": 128,
+      "mesh": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "[Comfy3D] Convert Vertex Color To Texture",
+    "_meta": {
+      "title": "Convert Vertex Color To Texture"
+    }
+  },
+  "17": {
+    "inputs": {
+      "save_path": "Test_Hunyuan3D_V1\\mesh_t_1.obj",
+      "mesh": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "[Comfy3D] Save 3D Mesh",
+    "_meta": {
+      "title": "Save 3D Mesh"
+    }
+  },
+  "19": {
+    "inputs": {
+      "axis_x_to": "+y",
+      "axis_y_to": "+z",
+      "axis_z_to": "+x",
+      "flip_normal": false,
+      "scale": 1,
+      "mesh": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "[Comfy3D] Switch Mesh Axis",
+    "_meta": {
+      "title": "Switch Mesh Axis"
+    }
+  },
+  "23": {
+    "inputs": {
+      "seed": 69,
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  }
+}
